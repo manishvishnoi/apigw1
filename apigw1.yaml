@@ -1,0 +1,97 @@
+trigger:
+  - main
+
+pool:
+  name: Default  # Make sure this is the correct name of your self-hosted agent pool
+
+variables:
+  storageAccountName: 'stacc$(Build.BuildId)'
+  fileShareName: 'myfileshare'
+  localFilePath: 'C:\Users\mavishnoi\Downloads\license.lic'
+  resourceGroup: 'RG-mavishnoi'
+  containerAppName: 'mycontainerapp'
+  existingContainerAppEnvironmentName: 'managedEnvironment-RGmavishnoi-91ac-21march'
+  location: 'northeurope'  # Add the location variable
+  dockerImage: 'manishvishnoi/gw22march:latest'
+  azureSubscription: 'axwaymanishdepops1'  # Ensure this is set to the correct Azure subscription
+
+stages:
+
+  - stage: CreateStorageAccount
+    displayName: Create Storage Account
+    jobs:
+      - job: CreateStorageAccount
+        steps:
+          - task: AzureCLI@2
+            displayName: 'Create Storage Account'
+            inputs:
+              azureSubscription: $(azureSubscription)
+              scriptType: pscore
+              scriptLocation: inlineScript
+              inlineScript: |
+                az storage account create --name $(storageAccountName) --resource-group $(resourceGroup) --location $(location) --sku Standard_LRS --kind StorageV2
+
+  - stage: CreateFileShare
+    displayName: Create File Share
+    jobs:
+      - job: CreateFileShare
+        steps:
+          - task: AzureCLI@2
+            displayName: 'Create File Share'
+            inputs:
+              azureSubscription: $(azureSubscription)
+              scriptType: pscore
+              scriptLocation: inlineScript
+              inlineScript: |
+                # Get storage account key
+                $storageKey = az storage account keys list --resource-group $(resourceGroup) --account-name $(storageAccountName) --query '[0].value' -o tsv
+                # Create the file share if it doesn't exist
+                $shareExists = az storage share exists --account-name $(storageAccountName) --account-key $storageKey --name $(fileShareName) --query 'exists' -o tsv
+                if ($shareExists -eq 'false') {
+                    az storage share create --account-name $(storageAccountName) --account-key $storageKey --name $(fileShareName)
+                    Write-Host "File share $(fileShareName) created."
+                } else {
+                    Write-Host "File share $(fileShareName) already exists."
+                }
+
+  - stage: UploadFile
+    displayName: Upload File to Azure File Share
+    jobs:
+      - job: UploadFile
+        displayName: Upload Local File
+        steps:
+          # Step 1: Get Storage Account Key
+          - task: AzureCLI@2
+            displayName: 'Get Storage Account Key'
+            inputs:
+              azureSubscription: $(azureSubscription)
+              scriptType: pscore
+              scriptLocation: inlineScript
+              inlineScript: |
+                $storageKey = az storage account keys list --resource-group $(resourceGroup) --account-name $(storageAccountName) --query '[0].value' -o tsv
+                Write-Host "##vso[task.setvariable variable=STORAGE_KEY]$storageKey"
+
+          # Step 2: Upload file to Azure File Share
+          - task: AzureCLI@2
+            displayName: 'Upload File to Azure File Share'
+            inputs:
+              azureSubscription: $(azureSubscription)
+              scriptType: pscore
+              scriptLocation: inlineScript
+              inlineScript: |
+                az storage file upload --account-name $(storageAccountName) --account-key $(STORAGE_KEY) --share-name $(fileShareName) --source "$(localFilePath)"
+
+  - stage: Deploy
+    displayName: Deploy Azure Resources
+    jobs:
+      - job: DeployResources
+        displayName: Deploy Bicep Template
+        steps:
+          - task: AzureCLI@2
+            displayName: 'Deploy Bicep Template'
+            inputs:
+              azureSubscription: $(azureSubscription)
+              scriptType: pscore
+              scriptLocation: inlineScript
+              inlineScript: |
+                az deployment group create --resource-group $(resourceGroup) --template-file ./apigw.bicep --parameters storageAccountName=$(storageAccountName) fileShareName=$(fileShareName) storageAccountKey=$(STORAGE_KEY) containerAppName=$(containerAppName) dockerImage=$(dockerImage) existingContainerAppEnvironmentName=$(existingContainerAppEnvironmentName) location=$(location)
