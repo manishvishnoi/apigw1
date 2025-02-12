@@ -4,7 +4,7 @@ param location string
 param existingContainerAppEnvironmentName string
 param storageAccountName string
 param dockerImage string
-param fileShareName string // Add this parameter for the file share name
+param fileShareName string
 
 // Reference an existing storage account (ensure it exists)
 resource storageAccount 'Microsoft.Storage/storageAccounts@2023-01-01' existing = {
@@ -19,14 +19,12 @@ resource containerApp 'Microsoft.App/containerApps@2023-04-01-preview' = {
     managedEnvironmentId: resourceId('Microsoft.App/managedEnvironments', existingContainerAppEnvironmentName)
 
     configuration: {
-      registries: []
       secrets: [
         {
           name: 'storageaccountkey'
           value: listKeys(storageAccount.id, '2023-01-01').keys[0].value
         }
       ]
-     
     }
 
     template: {
@@ -44,16 +42,19 @@ resource containerApp 'Microsoft.App/containerApps@2023-04-01-preview' = {
           ]
         }
       ]
-      volumes: [ // Add the file share volume
+      volumes: [ // Define the file share volume
         {
           name: 'fileshare-volume'
           storageType: 'AzureFile'
           storageName: storageAccountName
-          azureFile: {
-            accountName: storageAccountName
+          secrets: [ // Reference the storage account key secret
+            {
+              name: 'azurefile-accountkey'
+              value: '$(storageaccountkey)'
+            }
+          ]
+          mountOptions: {
             shareName: fileShareName
-            accessMode: 'ReadWrite'
-            accountKey: '$(storageaccountkey)' // Reference the storage account key secret
           }
         }
       ]
