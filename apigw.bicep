@@ -1,8 +1,10 @@
+// Parameters
 param containerAppName string
 param location string
 param existingContainerAppEnvironmentName string
 param storageAccountName string
 param dockerImage string
+param fileShareName string // Add this parameter for the file share name
 
 // Reference an existing storage account (ensure it exists)
 resource storageAccount 'Microsoft.Storage/storageAccounts@2023-01-01' existing = {
@@ -24,6 +26,19 @@ resource containerApp 'Microsoft.App/containerApps@2023-05-01' = {
           value: listKeys(storageAccount.id, '2023-01-01').keys[0].value
         }
       ]
+      volumes: [ // Add the file share volume
+        {
+          name: 'fileshare-volume'
+          storageType: 'AzureFile'
+          storageName: storageAccountName
+          azureFile: {
+            accountName: storageAccountName
+            shareName: fileShareName
+            accessMode: 'ReadWrite'
+            accountKey: '$(storageaccountkey)' // Reference the storage account key secret
+          }
+        }
+      ]
     }
 
     template: {
@@ -32,6 +47,12 @@ resource containerApp 'Microsoft.App/containerApps@2023-05-01' = {
           name: containerAppName
           image: dockerImage
           env: [{ name: 'ACCEPT_GENERAL_CONDITIONS', value: 'yes' },{ name: 'EMT_ANM_HOSTS', value: 'anm:8090' },{ name: 'CASS_HOST', value: 'casshost1' },{ name: 'EMT_TRACE_LEVEL', value: 'DEBUG' }
+          ]
+          volumeMounts: [ // Mount the file share volume
+            {
+              volumeName: 'fileshare-volume'
+              mountPath: '/opt/Axway/apigateway/conf/licenses' // Mount path inside the container
+            }
           ]
         }
       ]
