@@ -12,7 +12,7 @@ resource storageAccount 'Microsoft.Storage/storageAccounts@2023-01-01' existing 
 }
 
 // Deploy the Container App
-resource containerApp 'Microsoft.App/containerApps@2023-05-01' = {
+resource containerApp 'Microsoft.App/containerApps@2023-04-01-preview' = {
   name: containerAppName
   location: location
   properties: {
@@ -26,19 +26,7 @@ resource containerApp 'Microsoft.App/containerApps@2023-05-01' = {
           value: listKeys(storageAccount.id, '2023-01-01').keys[0].value
         }
       ]
-      volumes: [ // Add the file share volume
-        {
-          name: 'fileshare-volume'
-          storageType: 'AzureFile'
-          storageName: storageAccountName
-          azureFile: {
-            accountName: storageAccountName
-            shareName: fileShareName
-            accessMode: 'ReadWrite'
-            accountKey: '$(storageaccountkey)' // Reference the storage account key secret
-          }
-        }
-      ]
+     
     }
 
     template: {
@@ -54,6 +42,19 @@ resource containerApp 'Microsoft.App/containerApps@2023-05-01' = {
               mountPath: '/opt/Axway/apigateway/conf/licenses' // Mount path inside the container
             }
           ]
+        }
+      ]
+      volumes: [ // Add the file share volume
+        {
+          name: 'fileshare-volume'
+          storageType: 'AzureFile'
+          storageName: storageAccountName
+          azureFile: {
+            accountName: storageAccountName
+            shareName: fileShareName
+            accessMode: 'ReadWrite'
+            accountKey: '$(storageaccountkey)' // Reference the storage account key secret
+          }
         }
       ]
     }
